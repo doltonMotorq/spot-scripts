@@ -1,0 +1,149 @@
+expose:
+  type: clusterIP
+  tls:
+    auto:
+      commonName: harbor
+  clusterIP:
+    name: harbor
+    staticClusterIP: "11.0.182.196"
+
+externalURL: https://11.0.182.196:443
+
+# expose:
+#   type: ingress
+#   tls:
+#     enabled: true
+#     certSource: auto
+#   ingress:
+#     hosts:
+#       core: harbor.motorq.com
+#     controller: default
+#     className: "nginx"
+#     annotations:
+#       nginx.ingress.kubernetes.io/ssl-redirect: "true"
+#       nginx.ingress.kubernetes.io/proxy-body-size: "0"
+#       nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+#       nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+
+externalURL: https://harbor.motorq.com
+
+harborAdminPassword: "something"
+
+persistence:
+  enabled: true
+  # resourcePolicy: "keep"
+  persistentVolumeClaim:
+    registry:
+      storageClass: "harbor-storage"
+      size: 128Gi
+    jobservice:
+      storageClass: "harbor-storage"
+      size: 1Gi
+    database:
+      storageClass: "harbor-storage"
+      size: 1Gi
+    redis:
+      storageClass: "harbor-storage"
+      size: 1Gi
+
+database:
+  type: internal
+  internal:
+    password: "something"
+    nodeSelector:
+      motorq.com/harbor: "true"
+    tolerations:
+      - key: "motorq.com/harbor"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+
+redis:
+  type: internal
+  internal:
+    password: "something"
+    nodeSelector:
+      motorq.com/harbor: "true"
+    tolerations:
+      - key: "motorq.com/harbor"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+
+core:
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+  nodeSelector:
+    motorq.com/harbor: "true"
+  tolerations:
+    - key: "motorq.com/harbor"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+
+jobservice:
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+  nodeSelector:
+    motorq.com/harbor: "true"
+  tolerations:
+    - key: "motorq.com/harbor"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+
+registry:
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+  nodeSelector:
+    motorq.com/harbor: "true"
+  tolerations:
+    - key: "motorq.com/harbor"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+
+portal:
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+  nodeSelector:
+    motorq.com/harbor: "true"
+  tolerations:
+    - key: "motorq.com/harbor"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+
+trivy:
+  enabled: false
+
+# logLevel: debug

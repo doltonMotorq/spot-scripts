@@ -1,0 +1,31 @@
+resources:
+  requests:
+    memory: 128Mi
+  limits:
+    memory: 128Mi
+
+# nodeSelector:
+#   allow-webjob: "true"
+
+tolerations:
+  - operator: Exists
+
+priorityClassName: system-node-critical
+
+spegel:
+  logLevel: "DEBUG"
+  mirroredRegistries:
+    - https://motorqcustomer.azurecr.io
+    # - https://mirror.gcr.io
+    # - https://docker.io
+    # - https://ghcr.io
+
+livenessProbe:
+  enabled: true
+
+serviceMonitor:
+  enabled: true
+  interval: 1s
+
+grafanaDashboard:
+  enabled: true

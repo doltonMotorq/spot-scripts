@@ -1,0 +1,232 @@
+manager:
+  image:
+    repository: dragonflyoss/manager
+    registry: motorqcustomer.azurecr.io
+    tag: v2.3.0
+  initContainer:
+    image:
+      registry: motorqcustomer.azurecr.io
+      tag: "1.36"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  config:
+    verbose: true
+    pprofPort: 18066
+    job:
+      preheat:
+        tls:
+          insecureSkipVerify: true
+  nodeSelector:
+    motorq.com/dragonfly-system: "true"
+  tolerations:
+    - key: "motorq.com/dragonfly-system"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+
+scheduler:
+  image:
+    repository: dragonflyoss/scheduler
+    registry: motorqcustomer.azurecr.io
+    tag: v2.3.0
+  initContainer:
+    image:
+      registry: motorqcustomer.azurecr.io
+      tag: "1.36"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  config:
+    verbose: true
+    pprofPort: 18066
+  nodeSelector:
+    motorq.com/dragonfly-system: "true"
+  tolerations:
+    - key: "motorq.com/dragonfly-system"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+
+client:
+  image:
+    repository: dragonflyoss/client
+    registry: motorqcustomer.azurecr.io
+    tag: v1.0.25
+  config:
+    download:
+      server:
+        requestRateLimit: 8000
+      rateLimit: 80GiB
+      pieceTimeout: 60s
+      collectedPieceTimeout: 15s
+      concurrentPieceCount: 32
+  initContainer:
+    image:
+      registry: motorqcustomer.azurecr.io
+      tag: "1.36"
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        # - matchExpressions:
+        #   - key: "karpenter.sh/capacity-type"
+        #     operator: In
+        #     values: ["spot"]
+        #   - key: "dolton-testing"
+        #     operator: In
+        #     values: ["true"]
+        # - matchExpressions:
+        #   - key: "kubernetes.azure.com/scalesetpriority"
+        #     operator: In
+        #     values: ["spot"]
+        #   - key: "dolton-testing"
+        #     operator: In
+        #     values: ["true"]
+        - matchExpressions:
+          - key: "dolton-testing"
+            operator: In
+            values: ["true"]
+        - matchExpressions:
+          - key: "motorq.com/allow-webjob"
+            operator: In
+            values: ["true"]
+  tolerations:
+    - operator: "Exists"
+  dfinit:
+    enable: true
+    image:
+      repository: dragonflyoss/dfinit
+      registry: motorqcustomer.azurecr.io
+      tag: v1.0.1
+    config:
+      proxy:
+        addr: http://11.0.12.187:4001
+      containerRuntime:
+        containerd:
+          configPath: /etc/containerd/config.toml
+          registries:
+            - hostNamespace: motorqcustomer.azurecr.io
+              serverAddr: https://motorqcustomer.azurecr.io
+              capabilities: ["pull", "resolve"]
+              skipVerify: true
+            # - hostNamespace: docker.io
+            #   serverAddr: https://index.docker.io
+            #   capabilities: ["pull", "resolve"]
+            #   skipVerify: true
+            # - hostNamespace: mcr.microsoft.com
+            #   serverAddr: https://mcr.microsoft.com
+            #   capabilities: ["pull", "resolve"]
+            #   skipVerify: true
+            # - hostNamespace: quay.io
+            #   serverAddr: https://quay.io
+            #   capabilities: ["pull", "resolve"]
+            #   skipVerify: true
+            # - hostNamespace: registry.k8s.io
+            #   serverAddr: https://registry.k8s.io
+            #   capabilities: ["pull", "resolve"]
+            #   skipVerify: true
+            # - hostNamespace: ghcr.io
+            #   serverAddr: https://ghcr.io
+            #   capabilities: ["pull", "resolve"]
+            #   skipVerify: true
+            # - hostNamespace: public.ecr.aws
+            #   serverAddr: https://public.ecr.aws
+            #   capabilities: ["pull", "resolve"]
+            #   skipVerify: true
+            # - hostNamespace: motorqdev.azurecr.io
+            #   serverAddr: https://motorqdev.azurecr.io
+            #   capabilities: ["pull", "resolve"]
+            #   skipVerify: true
+            # - hostNamespace: k8s.gcr.io
+            #   serverAddr: https://k8s.gcr.io
+            #   capabilities: ["pull", "resolve"]
+            #   skipVerify: true
+            # - hostNamespace: motorqintern.azurecr.io
+            #   serverAddr: https://motorqintern.azurecr.io
+            #   capabilities: ["pull", "resolve"]
+            #   skipVerify: true
+            # - hostNamespace: motorqreleasetest.azurecr.io
+            #   serverAddr: https://motorqreleasetest.azurecr.io
+            #   capabilities: ["pull", "resolve"]
+            #   skipVerify: true
+
+seedClient:
+  image:
+    repository: dragonflyoss/client
+    registry: motorqcustomer.azurecr.io
+    tag: v1.0.1
+  initContainer:
+    image:
+      registry: motorqcustomer.azurecr.io
+      tag: "1.36"
+  nodeSelector:
+    motorq.com/dragonfly-system: "true"
+  tolerations:
+    - key: "motorq.com/dragonfly-system"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  config:
+    download:
+      server:
+        requestRateLimit: 8000
+      rateLimit: 80GiB
+      pieceTimeout: 60s
+      collectedPieceTimeout: 15s
+      concurrentPieceCount: 64
+
+mysql:
+  image:
+    registry: motorqcustomer.azurecr.io
+  primary:
+    nodeSelector:
+      motorq.com/dragonfly-system: "true"
+    tolerations:
+      - key: "motorq.com/dragonfly-system"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+
+redis:
+  image:
+    registry: motorqcustomer.azurecr.io
+  master:
+    nodeSelector:
+      motorq.com/dragonfly-system: "true"
+    tolerations:
+      - key: "motorq.com/dragonfly-system"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+  replica:
+    nodeSelector:
+      motorq.com/dragonfly-system: "true"
+    tolerations:
+      - key: "motorq.com/dragonfly-system"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+
+# # Ingress configuration for manager UI
+# ingress:
+#   manager:
+#     enabled: true
+#     className: "nginx"
+#     hosts:
+#       - host: dragonfly-manager.motorq.com
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#     tls:
+#       - secretName: dragonfly-manager-tls
+#         hosts:
+#           - dragonfly-manager.motorq.com
