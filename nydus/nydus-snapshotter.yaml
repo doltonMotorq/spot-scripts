@@ -1,0 +1,329 @@
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nydus-snapshotter-configs
+  labels:
+    app: nydus-snapshotter
+  namespace: nydus-snapshotter
+data:
+  FS_DRIVER: "fusedev"
+  ENABLE_CONFIG_FROM_VOLUME: "true"
+  ENABLE_RUNTIME_SPECIFIC_SNAPSHOTTER: "false"
+  ENABLE_SYSTEMD_SERVICE: "true"
+  config.toml: |-
+    version = 1
+    root = "/var/lib/containerd/io.containerd.snapshotter.v1.nydus"
+    address = "/run/containerd-nydus/containerd-nydus-grpc.sock"
+    daemon_mode = "multiple"
+    enable_system_controller = true
+    metrics_address = ":9110"
+    enable_stargz = false
+    cleanup_on_close = false
+    [system]
+    enable = true
+    address = "/run/containerd-nydus/system.sock"
+
+    [daemon]
+    nydusd_config = "/etc/nydus/nydusd-fusedev.json"
+    nydusd_path = "/usr/local/bin/nydusd"
+    nydusimage_path = "/usr/local/bin/nydus-image"
+    fs_driver = "fusedev"
+    log_level = "info"
+    recover_policy = "restart"
+    threads_number = 4
+    log_rotation_size = 100
+
+    [cgroup]
+    enable = true
+    memory_limit = ""
+
+    [log]
+    # Snapshotter's log level
+    level = "info"
+    log_rotation_compress = true
+    log_rotation_local_time = true
+    # Max number of days to retain logs
+    log_rotation_max_age = 7
+    log_rotation_max_backups = 5
+    # In unit MB(megabytes)
+    log_rotation_max_size = 100
+    log_to_stdout = false
+
+    [metrics]
+    address = ":9110"
+
+    [remote]
+    convert_vpc_registry = false
+    [remote.auth]
+    enable_kubeconfig_keychain = false
+    kubeconfig_path = ""
+    enable_cri_keychain = true
+    image_service_address = ""
+    [snapshot]
+    enable_nydus_overlayfs = false
+    nydus_overlayfs_path = "nydus-overlayfs"
+    enable_kata_volume = false
+    sync_remove = false
+    [cache_manager]
+    disable = false
+    gc_period = "24h"
+    cache_dir = ""
+    [image]
+    public_key_file = ""
+    validate_signature = false
+    [experimental]
+    enable_stargz = false
+    enable_referrer_detect = false
+    enable_backend_source = false
+    [experimental.tarfs]
+    enable_tarfs = false
+    mount_tarfs_on_host = false
+    tarfs_hint = false
+    max_concurrent_proc = 0
+    export_mode = ""
+
+  nydusd-fusedev.json: |-
+    {
+      "device": {
+        "backend": {
+          "type": "registry",
+          "config": {
+            "scheme": "",
+            "skip_verify": true,
+            "timeout": 5,
+            "connect_timeout": 5,
+            "retry_limit": 2
+          }
+        },
+        "cache": {
+          "type": "blobcache"
+        }
+      },
+      "mode": "direct",
+      "digest_validate": false,
+      "iostats_files": false,
+      "enable_xattr": true,
+      "amplify_io": 1048576,
+      "fs_prefetch": {
+        "enable": true,
+        "threads_count": 10,
+        "merging_size": 131072,
+        "bandwidth_rate": 1048576
+      }
+    }
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nydus-snapshotter
+  namespace: nydus-snapshotter
+  labels:
+    app: nydus-snapshotter
+spec:
+  selector:
+    matchLabels:
+      app: nydus-snapshotter
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: nydus-snapshotter
+
+    spec:
+      serviceAccountName: nydus-snapshotter-sa
+      hostNetwork: true
+      hostPID: true
+      initContainers:
+      - name: configure-containerd
+        image: ghcr.io/liubin/toml-cli:latest
+        command:
+        - sh
+        - -c
+        - |
+          # Backup original config
+          cp /etc/containerd/config.toml /etc/containerd/config.toml.backup
+
+          # Set the snapshotter to nydus using toml-cli
+          toml set /etc/containerd/config.toml 'plugins."io.containerd.grpc.v1.cri".containerd.snapshotter' "nydus" > /tmp/config.toml
+          mv /tmp/config.toml /etc/containerd/config.toml
+
+          echo "Configuration updated successfully!"
+          echo "Final containerd config:"
+          cat /etc/containerd/config.toml
+        volumeMounts:
+        - name: containerd-conf
+          mountPath: "/etc/containerd/"
+        securityContext:
+          privileged: true
+      containers:
+      - name: nydus-snapshotter
+        image: "ghcr.io/containerd/nydus-snapshotter:latest"
+        imagePullPolicy: Always
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: FS_DRIVER
+            valueFrom:
+              configMapKeyRef:
+                name: nydus-snapshotter-configs
+                key: FS_DRIVER
+                optional: true
+          - name: ENABLE_CONFIG_FROM_VOLUME
+            valueFrom:
+              configMapKeyRef:
+                name: nydus-snapshotter-configs
+                key: ENABLE_CONFIG_FROM_VOLUME
+                optional: true
+          - name: ENABLE_RUNTIME_SPECIFIC_SNAPSHOTTER
+            valueFrom:
+              configMapKeyRef:
+                name: nydus-snapshotter-configs
+                key: ENABLE_RUNTIME_SPECIFIC_SNAPSHOTTER
+                optional: true
+          - name: ENABLE_SYSTEMD_SERVICE
+            valueFrom:
+              configMapKeyRef:
+                name: nydus-snapshotter-configs
+                key: ENABLE_SYSTEMD_SERVICE
+                optional: true
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - "bash"
+              - "-c"
+              - |
+                /opt/nydus-artifacts/opt/nydus/snapshotter.sh cleanup
+        command:
+          - bash
+          - -c
+          - |-
+            /opt/nydus-artifacts/opt/nydus/snapshotter.sh deploy
+        volumeMounts:
+        - name: config-volume
+          mountPath: "/etc/nydus-snapshotter"
+        - name: nydus-lib
+          mountPath: "/var/lib/containerd/io.containerd.snapshotter.v1.nydus"
+          mountPropagation: Bidirectional
+        - name: nydus-run
+          mountPath: "/run/containerd-nydus"
+          mountPropagation: Bidirectional
+        - name: nydus-opt
+          mountPath: "/opt/nydus"
+          mountPropagation: Bidirectional
+        - name: nydus-etc
+          mountPath: "/etc/nydus"
+          mountPropagation: Bidirectional
+        - name: containerd-conf
+          mountPath: "/etc/containerd/"
+        - name: local-bin
+          mountPath: "/usr/local/bin/"
+        - name: etc-systemd-system
+          mountPath: "/etc/systemd/system/"
+        securityContext:
+          privileged: true
+
+      volumes:
+      - name: config-volume
+        configMap:
+          name: nydus-snapshotter-configs
+          optional: true
+      - name: nydus-run
+        hostPath:
+          path: /run/containerd-nydus
+          type: DirectoryOrCreate
+      - name: nydus-lib
+        hostPath:
+          path: /var/lib/containerd/io.containerd.snapshotter.v1.nydus
+          type: DirectoryOrCreate
+      - name: nydus-opt
+        hostPath:
+          path: /opt/nydus
+          type: DirectoryOrCreate
+      - name: nydus-etc
+        hostPath:
+          path: /etc/nydus
+          type: DirectoryOrCreate
+      - name: containerd-conf
+        hostPath:
+          path: /etc/containerd/
+      - name: local-bin
+        hostPath:
+          path: /usr/local/bin/
+      - name: etc-systemd-system
+        hostPath:
+          path: /etc/systemd/system/
+      # nodeSelector:
+      #   dedicated: vm
+      #   dolton-testing: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: dolton-testing
+                    operator: In
+                    values:
+                      - 'true'
+              - matchExpressions:
+                  - key: dedicated
+                    operator: In
+                    values:
+                      - vm
+      tolerations:
+      - operator: "Exists"
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nydus-snapshotter-sa
+  namespace: nydus-snapshotter
+
+---
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: nydus-snapshotter-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: nydus-snapshotter-role-binding
+roleRef:
+  kind: ClusterRole
+  name: nydus-snapshotter-role
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: nydus-snapshotter-sa
+  namespace: nydus-snapshotter
